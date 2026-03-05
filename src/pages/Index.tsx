@@ -8,8 +8,8 @@ interface Particle {
   x: number;
   y: number;
   emoji: string;
-  dx: number;
-  dy: number;
+  angle: number;
+  speed: number;
 }
 
 interface FloatLabel {
@@ -40,75 +40,27 @@ interface Task {
   done: boolean;
 }
 
+interface SaveData {
+  stars: number;
+  totalStars: number;
+  totalClicks: number;
+  upgradeLevels: Record<string, number>;
+  tasksDone: Record<string, boolean>;
+  energy: number;
+  level: number;
+  xp: number;
+}
+
 const EMOJIS = ["⭐", "✨", "💫", "🌟", "⚡", "🔥", "💥", "🌠"];
 
 const UPGRADES_INITIAL: Upgrade[] = [
-  {
-    id: "click_power",
-    name: "Сила клика",
-    desc: "Больше звёзд за каждый клик",
-    emoji: "👆",
-    baseCost: 50,
-    effect: "+1 звезда за клик",
-    level: 0,
-    maxLevel: 20,
-    getValue: (l) => l + 1,
-  },
-  {
-    id: "star_magnet",
-    name: "Магнит звёзд",
-    desc: "Притягивает звёзды со всей галактики",
-    emoji: "🧲",
-    baseCost: 200,
-    effect: "+5 звёзд за клик",
-    level: 0,
-    maxLevel: 10,
-    getValue: (l) => l * 5,
-  },
-  {
-    id: "auto_clicker",
-    name: "Автокликер",
-    desc: "Автоматически собирает звёзды",
-    emoji: "🤖",
-    baseCost: 500,
-    effect: "+2 звезды/сек",
-    level: 0,
-    maxLevel: 15,
-    getValue: (l) => l * 2,
-  },
-  {
-    id: "super_auto",
-    name: "Супер-автомат",
-    desc: "Мощный автоматический коллектор",
-    emoji: "🚀",
-    baseCost: 2000,
-    effect: "+10 звёзд/сек",
-    level: 0,
-    maxLevel: 10,
-    getValue: (l) => l * 10,
-  },
-  {
-    id: "multiplier",
-    name: "Множитель",
-    desc: "Удваивает весь доход",
-    emoji: "⚡",
-    baseCost: 5000,
-    effect: "x1.5 к доходу",
-    level: 0,
-    maxLevel: 5,
-    getValue: (l) => 1 + l * 0.5,
-  },
-  {
-    id: "galaxy_core",
-    name: "Ядро галактики",
-    desc: "Источник бесконечной силы",
-    emoji: "🌌",
-    baseCost: 20000,
-    effect: "+50 звёзд/сек",
-    level: 0,
-    maxLevel: 5,
-    getValue: (l) => l * 50,
-  },
+  { id: "click_power", name: "Сила клика", desc: "Больше звёзд за каждый клик", emoji: "👆", baseCost: 50, effect: "+1 звезда за клик", level: 0, maxLevel: 20, getValue: (l) => l + 1 },
+  { id: "star_magnet", name: "Магнит звёзд", desc: "Притягивает звёзды со всей галактики", emoji: "🧲", baseCost: 200, effect: "+5 звёзд за клик", level: 0, maxLevel: 10, getValue: (l) => l * 5 },
+  { id: "energy_boost", name: "Турбо-энергия", desc: "Увеличивает максимум энергии", emoji: "⚡", baseCost: 300, effect: "+50 макс. энергии", level: 0, maxLevel: 10, getValue: (l) => l * 50 },
+  { id: "auto_clicker", name: "Автокликер", desc: "Автоматически собирает звёзды", emoji: "🤖", baseCost: 500, effect: "+2 звезды/сек", level: 0, maxLevel: 15, getValue: (l) => l * 2 },
+  { id: "super_auto", name: "Супер-автомат", desc: "Мощный автоматический коллектор", emoji: "🚀", baseCost: 2000, effect: "+10 звёзд/сек", level: 0, maxLevel: 10, getValue: (l) => l * 10 },
+  { id: "multiplier", name: "Множитель", desc: "Усиливает весь доход", emoji: "💎", baseCost: 5000, effect: "x1.5 к доходу", level: 0, maxLevel: 5, getValue: (l) => 1 + l * 0.5 },
+  { id: "galaxy_core", name: "Ядро галактики", desc: "Источник бесконечной силы", emoji: "🌌", baseCost: 20000, effect: "+50 звёзд/сек", level: 0, maxLevel: 5, getValue: (l) => l * 50 },
 ];
 
 const TASKS_INITIAL: Task[] = [
@@ -119,53 +71,104 @@ const TASKS_INITIAL: Task[] = [
   { id: "t5", title: "Автопилот", desc: "Купи автокликер", reward: 300, emoji: "🤖", done: false },
 ];
 
+const XP_PER_LEVEL = 100;
+const ENERGY_REGEN_PER_SEC = 1;
+const MAX_ENERGY_BASE = 100;
+
 function getUpgradeCost(upgrade: Upgrade): number {
   return Math.floor(upgrade.baseCost * Math.pow(1.6, upgrade.level));
 }
 
+function loadSave(): SaveData | null {
+  try {
+    const raw = localStorage.getItem("star_clicker_save");
+    if (!raw) return null;
+    return JSON.parse(raw) as SaveData;
+  } catch { return null; }
+}
+
+function buildUpgrades(levels: Record<string, number>): Upgrade[] {
+  return UPGRADES_INITIAL.map((u) => ({ ...u, level: levels[u.id] ?? 0 }));
+}
+
+function buildTasks(done: Record<string, boolean>): Task[] {
+  return TASKS_INITIAL.map((t) => ({ ...t, done: done[t.id] ?? false }));
+}
+
 export default function Index() {
+  const saved = loadSave();
+
   const [tab, setTab] = useState<Tab>("home");
-  const [stars, setStars] = useState(0);
-  const [totalStars, setTotalStars] = useState(0);
-  const [totalClicks, setTotalClicks] = useState(0);
-  const [upgrades, setUpgrades] = useState<Upgrade[]>(UPGRADES_INITIAL);
-  const [tasks, setTasks] = useState<Task[]>(TASKS_INITIAL);
+  const [stars, setStars] = useState(saved?.stars ?? 0);
+  const [totalStars, setTotalStars] = useState(saved?.totalStars ?? 0);
+  const [totalClicks, setTotalClicks] = useState(saved?.totalClicks ?? 0);
+  const [upgrades, setUpgrades] = useState<Upgrade[]>(saved ? buildUpgrades(saved.upgradeLevels) : UPGRADES_INITIAL);
+  const [tasks, setTasks] = useState<Task[]>(saved ? buildTasks(saved.tasksDone) : TASKS_INITIAL);
+  const [level, setLevel] = useState(saved?.level ?? 1);
+  const [xp, setXp] = useState(saved?.xp ?? 0);
+  const [energy, setEnergy] = useState(saved?.energy ?? MAX_ENERGY_BASE);
+
   const [particles, setParticles] = useState<Particle[]>([]);
   const [floatLabels, setFloatLabels] = useState<FloatLabel[]>([]);
-  const [isClicking, setIsClicking] = useState(false);
-  const [glowRings, setGlowRings] = useState<number[]>([]);
+  const [clickAnim, setClickAnim] = useState(false);
+  const [glowRing, setGlowRing] = useState(false);
+
   const particleId = useRef(0);
   const autoRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const starsRef = useRef(stars);
-  starsRef.current = stars;
+  const energyRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const saveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const getClickPower = useCallback(() => {
+  const starsRef = useRef(stars);
+  const upgradesRef = useRef(upgrades);
+  const energyRef2 = useRef(energy);
+  const levelRef = useRef(level);
+  const xpRef = useRef(xp);
+  const totalStarsRef = useRef(totalStars);
+  const totalClicksRef = useRef(totalClicks);
+  const tasksRef = useRef(tasks);
+
+  starsRef.current = stars;
+  upgradesRef.current = upgrades;
+  energyRef2.current = energy;
+  levelRef.current = level;
+  xpRef.current = xp;
+  totalStarsRef.current = totalStars;
+  totalClicksRef.current = totalClicks;
+  tasksRef.current = tasks;
+
+  const getMaxEnergy = useCallback((ups: Upgrade[]) => {
+    const energyU = ups.find((u) => u.id === "energy_boost");
+    return MAX_ENERGY_BASE + (energyU && energyU.level > 0 ? energyU.getValue(energyU.level) : 0);
+  }, []);
+
+  const getClickPower = useCallback((ups: Upgrade[]) => {
     let power = 1;
-    const clickU = upgrades.find((u) => u.id === "click_power");
-    const magnetU = upgrades.find((u) => u.id === "star_magnet");
-    const multU = upgrades.find((u) => u.id === "multiplier");
+    const clickU = ups.find((u) => u.id === "click_power");
+    const magnetU = ups.find((u) => u.id === "star_magnet");
+    const multU = ups.find((u) => u.id === "multiplier");
     if (clickU && clickU.level > 0) power += clickU.getValue(clickU.level);
     if (magnetU && magnetU.level > 0) power += magnetU.getValue(magnetU.level);
     if (multU && multU.level > 0) power = Math.floor(power * multU.getValue(multU.level));
     return power;
-  }, [upgrades]);
+  }, []);
 
-  const getAutoPerSec = useCallback(() => {
+  const getAutoPerSec = useCallback((ups: Upgrade[]) => {
     let auto = 0;
-    const autoU = upgrades.find((u) => u.id === "auto_clicker");
-    const superU = upgrades.find((u) => u.id === "super_auto");
-    const galaxyU = upgrades.find((u) => u.id === "galaxy_core");
-    const multU = upgrades.find((u) => u.id === "multiplier");
+    const autoU = ups.find((u) => u.id === "auto_clicker");
+    const superU = ups.find((u) => u.id === "super_auto");
+    const galaxyU = ups.find((u) => u.id === "galaxy_core");
+    const multU = ups.find((u) => u.id === "multiplier");
     if (autoU && autoU.level > 0) auto += autoU.getValue(autoU.level);
     if (superU && superU.level > 0) auto += superU.getValue(superU.level);
     if (galaxyU && galaxyU.level > 0) auto += galaxyU.getValue(galaxyU.level);
     if (multU && multU.level > 0) auto = Math.floor(auto * multU.getValue(multU.level));
     return auto;
-  }, [upgrades]);
+  }, []);
 
+  // Auto clicker
   useEffect(() => {
     if (autoRef.current) clearInterval(autoRef.current);
-    const perSec = getAutoPerSec();
+    const perSec = getAutoPerSec(upgrades);
     if (perSec > 0) {
       autoRef.current = setInterval(() => {
         setStars((s) => s + perSec);
@@ -173,62 +176,112 @@ export default function Index() {
       }, 1000);
     }
     return () => { if (autoRef.current) clearInterval(autoRef.current); };
-  }, [getAutoPerSec]);
+  }, [upgrades, getAutoPerSec]);
+
+  // Energy regen
+  useEffect(() => {
+    if (energyRef.current) clearInterval(energyRef.current);
+    energyRef.current = setInterval(() => {
+      const max = getMaxEnergy(upgradesRef.current);
+      setEnergy((e) => Math.min(e + ENERGY_REGEN_PER_SEC, max));
+    }, 1000);
+    return () => { if (energyRef.current) clearInterval(energyRef.current); };
+  }, [upgrades, getMaxEnergy]);
+
+  // Auto-save every 3s
+  const triggerSave = useCallback(() => {
+    if (saveRef.current) clearTimeout(saveRef.current);
+    saveRef.current = setTimeout(() => {
+      const data: SaveData = {
+        stars: starsRef.current,
+        totalStars: totalStarsRef.current,
+        totalClicks: totalClicksRef.current,
+        upgradeLevels: Object.fromEntries(upgradesRef.current.map((u) => [u.id, u.level])),
+        tasksDone: Object.fromEntries(tasksRef.current.map((t) => [t.id, t.done])),
+        energy: energyRef2.current,
+        level: levelRef.current,
+        xp: xpRef.current,
+      };
+      localStorage.setItem("star_clicker_save", JSON.stringify(data));
+    }, 1500);
+  }, []);
+
+  useEffect(() => { triggerSave(); }, [stars, upgrades, tasks, level, xp, energy, triggerSave]);
+
+  const addXp = useCallback((amount: number) => {
+    setXp((prev) => {
+      let newXp = prev + amount;
+      let newLevel = levelRef.current;
+      const needed = newLevel * XP_PER_LEVEL;
+      if (newXp >= needed) {
+        newXp -= needed;
+        newLevel += 1;
+        setLevel(newLevel);
+      }
+      return newXp;
+    });
+  }, []);
 
   const handleClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
-    const power = getClickPower();
+    const curEnergy = energyRef2.current;
+    if (curEnergy <= 0) return;
+
+    const ups = upgradesRef.current;
+    const power = getClickPower(ups);
+
     setStars((s) => s + power);
     setTotalStars((t) => t + power);
     setTotalClicks((c) => c + 1);
+    setEnergy((en) => Math.max(0, en - 1));
+    addXp(1);
 
+    // Click animation — simple flag toggle
+    setClickAnim(true);
+    setTimeout(() => setClickAnim(false), 250);
+
+    setGlowRing(true);
+    setTimeout(() => setGlowRing(false), 500);
+
+    // Particles — pure CSS, limit to 6
     const rect = e.currentTarget.getBoundingClientRect();
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
 
-    setIsClicking(true);
-    setTimeout(() => setIsClicking(false), 300);
+    const pid = particleId.current;
+    particleId.current += 6;
+    const newP: Particle[] = Array.from({ length: 6 }, (_, i) => ({
+      id: pid + i,
+      x: cx,
+      y: cy,
+      emoji: EMOJIS[Math.floor(Math.random() * EMOJIS.length)],
+      angle: (i / 6) * 360,
+      speed: 50 + Math.random() * 60,
+    }));
+    setParticles((p) => [...p.slice(-18), ...newP]);
+    setTimeout(() => setParticles((p) => p.filter((x) => x.id < pid || x.id >= pid + 6)), 650);
 
-    const ringId = Date.now();
-    setGlowRings((r) => [...r, ringId]);
-    setTimeout(() => setGlowRings((r) => r.filter((x) => x !== ringId)), 600);
+    const fid = particleId.current++;
+    setFloatLabels((f) => [...f.slice(-4), { id: fid, x: cx + (Math.random() - 0.5) * 40, y: cy - 10, value: power }]);
+    setTimeout(() => setFloatLabels((f) => f.filter((x) => x.id !== fid)), 800);
+  }, [getClickPower, addXp]);
 
-    const newParticles: Particle[] = Array.from({ length: 8 }, (_, i) => {
-      const angle = (i / 8) * Math.PI * 2;
-      const speed = 60 + Math.random() * 80;
-      return {
-        id: particleId.current++,
-        x: cx,
-        y: cy,
-        emoji: EMOJIS[Math.floor(Math.random() * EMOJIS.length)],
-        dx: Math.cos(angle) * speed,
-        dy: Math.sin(angle) * speed,
-      };
+  const buyUpgrade = useCallback((upgradeId: string) => {
+    setUpgrades((prev) => {
+      const u = prev.find((x) => x.id === upgradeId);
+      if (!u) return prev;
+      const cost = getUpgradeCost(u);
+      if (starsRef.current < cost || u.level >= u.maxLevel) return prev;
+      setStars((s) => s - cost);
+      setTasks((t) =>
+        t.map((task) => {
+          if (task.id === "t3" && !task.done) return { ...task, done: true };
+          if (task.id === "t5" && !task.done && ["auto_clicker", "super_auto", "galaxy_core"].includes(upgradeId)) return { ...task, done: true };
+          return task;
+        })
+      );
+      return prev.map((x) => x.id === upgradeId ? { ...x, level: x.level + 1 } : x);
     });
-    setParticles((p) => [...p, ...newParticles]);
-    setTimeout(() => {
-      setParticles((p) => p.filter((x) => !newParticles.find((n) => n.id === x.id)));
-    }, 700);
-
-    const floatId = particleId.current++;
-    setFloatLabels((f) => [...f, { id: floatId, x: cx + (Math.random() - 0.5) * 60, y: cy - 20, value: power }]);
-    setTimeout(() => setFloatLabels((f) => f.filter((x) => x.id !== floatId)), 900);
-  }, [getClickPower]);
-
-  const buyUpgrade = (upgradeId: string) => {
-    setUpgrades((prev) =>
-      prev.map((u) => {
-        if (u.id !== upgradeId) return u;
-        const cost = getUpgradeCost(u);
-        if (starsRef.current < cost || u.level >= u.maxLevel) return u;
-        setStars((s) => s - cost);
-        if (["auto_clicker", "super_auto", "galaxy_core"].includes(upgradeId)) {
-          setTasks((t) => t.map((task) => task.id === "t5" ? { ...task, done: true } : task));
-        }
-        setTasks((t) => t.map((task) => task.id === "t3" && !task.done ? { ...task, done: true } : task));
-        return { ...u, level: u.level + 1 };
-      })
-    );
-  };
+  }, []);
 
   const isTaskReady = (task: Task) => {
     if (task.done) return false;
@@ -251,129 +304,182 @@ export default function Index() {
   const formatNum = (n: number) => {
     if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
     if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
-    return n.toString();
+    return Math.floor(n).toString();
   };
 
-  const autoPerSec = getAutoPerSec();
-  const clickPower = getClickPower();
+  const autoPerSec = getAutoPerSec(upgrades);
+  const clickPower = getClickPower(upgrades);
+  const maxEnergy = getMaxEnergy(upgrades);
+  const xpToNext = level * XP_PER_LEVEL;
+  const energyPct = (energy / maxEnergy) * 100;
+  const xpPct = (xp / xpToNext) * 100;
 
   return (
     <div className="flex flex-col h-full bg-space relative overflow-hidden">
-      {/* Background stars */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {Array.from({ length: 30 }, (_, i) => (
+
+      {/* Static bg dots — no random, no re-render */}
+      <div className="absolute inset-0 pointer-events-none" aria-hidden>
+        {[12, 25, 38, 51, 64, 77, 90, 5, 18, 31, 44, 57, 70, 83, 96, 8, 21, 34, 47, 60, 73, 86, 3, 16, 29, 42, 55, 68, 81, 94].map((l, i) => (
           <div
             key={i}
-            className="absolute w-1 h-1 rounded-full bg-white animate-twinkle"
-            style={{
-              left: `${(i * 37.3) % 100}%`,
-              top: `${(i * 53.7) % 100}%`,
-              animationDelay: `${(i * 0.3) % 3}s`,
-              opacity: 0.2 + (i % 5) * 0.1,
-            }}
+            className="absolute w-0.5 h-0.5 rounded-full bg-white animate-twinkle"
+            style={{ left: `${l}%`, top: `${[8,14,22,30,38,46,54,62,70,78,86,92,5,18,27,35,43,51,59,67,75,83,91,12,24,33,41,49,57,65][i]}%`, animationDelay: `${(i * 0.2) % 3}s`, opacity: 0.3 + (i % 4) * 0.1 }}
           />
         ))}
       </div>
 
-      {/* HEADER */}
-      <div className="relative z-10 pt-3 pb-2 px-4 flex items-center justify-between shrink-0">
-        <div>
-          <p className="text-xs text-white/40 font-rubik uppercase tracking-widest">Баланс</p>
+      {/* HEADER: баланс + уровень + энергия */}
+      <div className="relative z-10 px-4 pt-3 pb-2 shrink-0 space-y-2">
+        {/* Row 1: баланс + авто */}
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-2xl">⭐</span>
-            <span className="font-orbitron text-2xl font-black shimmer-text">{formatNum(stars)}</span>
+            <span className="text-xl">⭐</span>
+            <span className="font-orbitron text-xl font-black shimmer-text">{formatNum(stars)}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {autoPerSec > 0 && (
+              <div className="glass-card rounded-full px-2.5 py-1 flex items-center gap-1">
+                <span className="text-xs">🤖</span>
+                <span className="text-xs font-orbitron" style={{ color: "#00F5FF" }}>+{autoPerSec}/с</span>
+              </div>
+            )}
+            <div className="glass-card rounded-full px-2.5 py-1 flex items-center gap-1">
+              <span className="text-xs font-orbitron" style={{ color: "#BF5FFF" }}>Ур.{level}</span>
+            </div>
           </div>
         </div>
-        <div className="text-right">
-          {autoPerSec > 0 && (
-            <div className="glass-card rounded-full px-3 py-1 flex items-center gap-1">
-              <span className="text-xs">🤖</span>
-              <span className="text-xs font-orbitron" style={{ color: "#00F5FF" }}>+{autoPerSec}/с</span>
-            </div>
-          )}
+
+        {/* Row 2: XP bar */}
+        <div>
+          <div className="flex justify-between text-[10px] text-white/30 mb-0.5">
+            <span className="font-rubik">Опыт</span>
+            <span className="font-orbitron">{xp}/{xpToNext} XP</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-300"
+              style={{ width: `${xpPct}%`, background: "linear-gradient(90deg, #BF5FFF, #00F5FF)" }}
+            />
+          </div>
+        </div>
+
+        {/* Row 3: Energy bar */}
+        <div>
+          <div className="flex justify-between text-[10px] mb-0.5">
+            <span className="font-rubik" style={{ color: energy <= 10 ? "#FF2D78" : "rgba(255,255,255,0.4)" }}>
+              ⚡ Энергия
+            </span>
+            <span className="font-orbitron" style={{ color: energy <= 10 ? "#FF2D78" : "rgba(255,255,255,0.4)" }}>
+              {Math.floor(energy)}/{maxEnergy}
+            </span>
+          </div>
+          <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-300"
+              style={{
+                width: `${energyPct}%`,
+                background: energy <= 20
+                  ? "linear-gradient(90deg, #FF2D78, #FF6B35)"
+                  : "linear-gradient(90deg, #FFD700, #FF6B35)",
+              }}
+            />
+          </div>
         </div>
       </div>
 
       {/* CONTENT */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden relative z-10">
 
-        {/* HOME TAB */}
+        {/* HOME */}
         {tab === "home" && (
-          <div className="flex flex-col items-center justify-center min-h-full px-4 gap-6 py-4">
-            <div className="text-center">
-              <p className="font-orbitron text-xs tracking-[0.3em] text-white/40 uppercase">Клик = +{clickPower} ⭐</p>
-            </div>
+          <div className="flex flex-col items-center justify-center min-h-full px-4 gap-5 py-4">
+            <p className="font-orbitron text-[11px] tracking-[0.25em] text-white/40 uppercase">Клик = +{clickPower} ⭐</p>
 
             {/* STAR BUTTON */}
-            <div className="relative flex items-center justify-center">
-              {glowRings.map((id) => (
-                <div
-                  key={id}
-                  className="absolute w-48 h-48 rounded-full border-2 border-yellow-400/60 animate-glow-ring pointer-events-none"
-                />
-              ))}
+            <div className="relative flex items-center justify-center select-none">
+              {/* Glow ring — CSS only, no state array */}
+              {glowRing && (
+                <div className="absolute w-52 h-52 rounded-full border-2 border-yellow-400/70 animate-glow-ring pointer-events-none" />
+              )}
 
               <button
                 onClick={handleClick}
-                className={`relative w-52 h-52 rounded-full star-btn focus:outline-none ${isClicking ? "animate-star-click" : "animate-star-pulse"}`}
+                className="relative w-52 h-52 rounded-full focus:outline-none transition-transform duration-150"
                 style={{
-                  background: "radial-gradient(circle at 35% 35%, rgba(255,220,50,0.25) 0%, rgba(255,107,53,0.15) 50%, transparent 75%)",
-                  boxShadow: "0 0 60px rgba(255,215,0,0.3), 0 0 120px rgba(255,107,53,0.15), inset 0 0 40px rgba(255,215,0,0.05)",
-                  border: "2px solid rgba(255,215,0,0.3)",
+                  transform: clickAnim ? "scale(0.89)" : "scale(1)",
+                  background: "radial-gradient(circle at 35% 35%, rgba(255,220,50,0.22) 0%, rgba(255,107,53,0.12) 55%, transparent 75%)",
+                  boxShadow: "0 0 50px rgba(255,215,0,0.28), 0 0 100px rgba(255,107,53,0.12), inset 0 0 30px rgba(255,215,0,0.05)",
+                  border: "2px solid rgba(255,215,0,0.28)",
+                  filter: energy <= 0 ? "grayscale(0.7)" : undefined,
                 }}
               >
+                {/* Particles inside button */}
                 <div className="absolute inset-0 rounded-full overflow-hidden pointer-events-none">
                   {particles.map((p) => (
-                    <div
+                    <span
                       key={p.id}
-                      className="absolute text-lg animate-particle-burst"
+                      className="absolute text-base animate-particle-burst"
                       style={{
                         left: p.x,
                         top: p.y,
-                        "--tx": `translate(${p.dx}px, ${p.dy}px)`,
+                        "--tx": `translate(${Math.cos((p.angle * Math.PI) / 180) * p.speed}px, ${Math.sin((p.angle * Math.PI) / 180) * p.speed}px)`,
                       } as React.CSSProperties}
                     >
                       {p.emoji}
-                    </div>
+                    </span>
                   ))}
                 </div>
-                <span className="text-8xl select-none glow-gold" style={{ display: "block", lineHeight: 1 }}>⭐</span>
-              </button>
 
-              {floatLabels.map((f) => (
-                <div
-                  key={f.id}
-                  className="absolute pointer-events-none animate-float-up font-orbitron font-black text-xl"
+                {/* Float labels */}
+                {floatLabels.map((f) => (
+                  <span
+                    key={f.id}
+                    className="absolute pointer-events-none animate-float-up font-orbitron font-black text-lg"
+                    style={{
+                      left: f.x,
+                      top: f.y,
+                      color: "#FFD700",
+                      textShadow: "0 0 8px #FFD700",
+                      transform: "translate(-50%, -50%)",
+                    }}
+                  >
+                    +{f.value}
+                  </span>
+                ))}
+
+                <span
+                  className="text-8xl select-none"
                   style={{
-                    left: f.x,
-                    top: f.y,
-                    color: "#FFD700",
-                    textShadow: "0 0 10px #FFD700",
-                    transform: "translate(-50%, -50%)",
+                    display: "block",
+                    lineHeight: 1,
+                    filter: "drop-shadow(0 0 14px #FFD700) drop-shadow(0 0 30px #FF6B35)",
+                    animation: clickAnim ? "none" : "star-pulse 2.5s ease-in-out infinite",
                   }}
                 >
-                  +{f.value}
-                </div>
-              ))}
+                  ⭐
+                </span>
+              </button>
             </div>
 
-            {/* STATS ROW */}
+            {energy <= 0 && (
+              <p className="text-xs font-rubik" style={{ color: "#FF2D78" }}>Нет энергии! Восстанавливается +1/сек ⚡</p>
+            )}
+
+            {/* STATS */}
             <div className="flex gap-3 w-full max-w-xs">
               <div className="flex-1 glass-card rounded-2xl p-3 text-center neon-border">
                 <p className="text-white/40 text-xs mb-1">Всего звёзд</p>
-                <p className="font-orbitron font-bold text-base" style={{ color: "#FFD700" }}>{formatNum(totalStars)}</p>
+                <p className="font-orbitron font-bold text-sm" style={{ color: "#FFD700" }}>{formatNum(totalStars)}</p>
               </div>
               <div className="flex-1 glass-card rounded-2xl p-3 text-center neon-border">
                 <p className="text-white/40 text-xs mb-1">Кликов</p>
-                <p className="font-orbitron font-bold text-base" style={{ color: "#00F5FF" }}>{formatNum(totalClicks)}</p>
+                <p className="font-orbitron font-bold text-sm" style={{ color: "#00F5FF" }}>{formatNum(totalClicks)}</p>
               </div>
             </div>
-
-            <p className="text-white/25 text-xs font-rubik text-center">Кликай на звезду, чтобы собирать ⭐</p>
           </div>
         )}
 
-        {/* TASKS TAB */}
+        {/* TASKS */}
         {tab === "tasks" && (
           <div className="px-4 py-4 space-y-3">
             <h2 className="font-orbitron font-bold text-lg glow-text-gold mb-4">Задания</h2>
@@ -393,13 +499,7 @@ export default function Index() {
                   <button
                     onClick={() => claimTask(task.id)}
                     disabled={task.done || !ready}
-                    className={`rounded-xl px-3 py-2 text-xs font-orbitron font-bold transition-all ${
-                      task.done
-                        ? "bg-white/10 text-white/30 cursor-not-allowed"
-                        : ready
-                        ? "text-black animate-bounce-in"
-                        : "bg-white/5 text-white/25 cursor-not-allowed"
-                    }`}
+                    className={`rounded-xl px-3 py-2 text-xs font-orbitron font-bold transition-all shrink-0 ${task.done ? "bg-white/10 text-white/30 cursor-not-allowed" : ready ? "text-black" : "bg-white/5 text-white/25 cursor-not-allowed"}`}
                     style={ready && !task.done ? { background: "linear-gradient(135deg, #FFD700, #FF6B35)" } : {}}
                   >
                     {task.done ? "✓" : ready ? "Забрать" : "..."}
@@ -410,7 +510,7 @@ export default function Index() {
           </div>
         )}
 
-        {/* SHOP TAB */}
+        {/* SHOP */}
         {tab === "shop" && (
           <div className="px-4 py-4 space-y-3">
             <h2 className="font-orbitron font-bold text-lg glow-text-gold mb-4">Магазин</h2>
@@ -419,19 +519,14 @@ export default function Index() {
               const canBuy = stars >= cost && upgrade.level < upgrade.maxLevel;
               const maxed = upgrade.level >= upgrade.maxLevel;
               return (
-                <div
-                  key={upgrade.id}
-                  className={`glass-card rounded-2xl p-4 neon-border transition-all ${canBuy ? "ring-1 ring-yellow-400/30" : ""}`}
-                >
+                <div key={upgrade.id} className={`glass-card rounded-2xl p-4 neon-border transition-all ${canBuy ? "ring-1 ring-yellow-400/30" : ""}`}>
                   <div className="flex items-center gap-3">
                     <span className="text-3xl">{upgrade.emoji}</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-rubik font-semibold text-sm text-white">{upgrade.name}</p>
                         {upgrade.level > 0 && (
-                          <span className="text-xs font-orbitron px-2 py-0.5 rounded-full" style={{ background: "rgba(255,215,0,0.15)", color: "#FFD700" }}>
-                            Ур.{upgrade.level}
-                          </span>
+                          <span className="text-xs font-orbitron px-2 py-0.5 rounded-full" style={{ background: "rgba(255,215,0,0.15)", color: "#FFD700" }}>Ур.{upgrade.level}</span>
                         )}
                       </div>
                       <p className="text-white/40 text-xs mt-0.5">{upgrade.desc}</p>
@@ -440,29 +535,24 @@ export default function Index() {
                     <button
                       onClick={() => buyUpgrade(upgrade.id)}
                       disabled={!canBuy}
-                      className={`rounded-xl px-3 py-2 text-xs font-orbitron font-bold flex flex-col items-center gap-0.5 min-w-[64px] transition-all shrink-0 ${
-                        maxed
-                          ? "bg-white/5 text-white/20 cursor-not-allowed"
-                          : canBuy
-                          ? "text-black active:scale-95"
-                          : "bg-white/5 text-white/30 cursor-not-allowed"
-                      }`}
-                      style={canBuy && !maxed ? { background: "linear-gradient(135deg, #FFD700, #FF6B35)" } : {}}
+                      className={`rounded-xl px-3 py-2 text-xs font-orbitron font-bold flex flex-col items-center gap-0.5 min-w-[60px] shrink-0 transition-transform active:scale-95 ${maxed ? "cursor-not-allowed" : canBuy ? "text-black" : "cursor-not-allowed"}`}
+                      style={
+                        maxed ? { background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.2)" } :
+                        canBuy ? { background: "linear-gradient(135deg, #FFD700, #FF6B35)" } :
+                        { background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.3)" }
+                      }
                     >
                       {maxed ? <span>MAX</span> : (<><span>⭐</span><span>{formatNum(cost)}</span></>)}
                     </button>
                   </div>
                   {upgrade.level > 0 && (
                     <div className="mt-3">
-                      <div className="flex justify-between text-xs text-white/30 mb-1">
+                      <div className="flex justify-between text-[10px] text-white/30 mb-1">
                         <span>Прогресс</span>
                         <span>{upgrade.level}/{upgrade.maxLevel}</span>
                       </div>
                       <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all"
-                          style={{ width: `${(upgrade.level / upgrade.maxLevel) * 100}%`, background: "linear-gradient(90deg, #FFD700, #FF6B35)" }}
-                        />
+                        <div className="h-full rounded-full transition-all" style={{ width: `${(upgrade.level / upgrade.maxLevel) * 100}%`, background: "linear-gradient(90deg, #FFD700, #FF6B35)" }} />
                       </div>
                     </div>
                   )}
@@ -472,20 +562,20 @@ export default function Index() {
           </div>
         )}
 
-        {/* PROFILE TAB */}
+        {/* PROFILE */}
         {tab === "profile" && (
           <div className="px-4 py-4 space-y-4">
             <h2 className="font-orbitron font-bold text-lg glow-text-gold mb-4">Профиль</h2>
-            <div className="flex flex-col items-center gap-4 py-4">
+            <div className="flex flex-col items-center gap-3 py-4">
               <div
-                className="w-24 h-24 rounded-full flex items-center justify-center text-5xl animate-star-pulse"
-                style={{ background: "radial-gradient(circle, rgba(255,215,0,0.2), transparent)", border: "2px solid rgba(255,215,0,0.3)" }}
+                className="w-24 h-24 rounded-full flex items-center justify-center text-5xl"
+                style={{ background: "radial-gradient(circle, rgba(255,215,0,0.2), transparent)", border: "2px solid rgba(255,215,0,0.3)", animation: "star-pulse 2.5s ease-in-out infinite" }}
               >
                 ⭐
               </div>
               <div className="text-center">
                 <p className="font-orbitron font-black text-xl shimmer-text">Звёздный Путник</p>
-                <p className="text-white/40 text-sm mt-1">Исследователь галактики</p>
+                <p className="text-white/40 text-sm mt-0.5">Уровень {level} · {xp}/{xpToNext} XP</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -507,16 +597,16 @@ export default function Index() {
           </div>
         )}
 
-        {/* SETTINGS TAB */}
+        {/* SETTINGS */}
         {tab === "settings" && (
           <div className="px-4 py-4 space-y-3">
             <h2 className="font-orbitron font-bold text-lg glow-text-gold mb-4">Настройки</h2>
             <div className="glass-card rounded-2xl p-4 neon-border space-y-4">
               {[
-                { label: "Вибрация", desc: "При каждом клике", on: true },
                 { label: "Эффекты частиц", desc: "Анимация при клике", on: true },
+                { label: "Автосохранение", desc: "Прогресс сохраняется каждые 1.5с", on: true },
                 { label: "Звуки", desc: "Скоро", on: false },
-              ].map((item) => (
+              ].map((item, idx, arr) => (
                 <div key={item.label}>
                   <div className="flex items-center justify-between">
                     <div>
@@ -527,28 +617,24 @@ export default function Index() {
                       className="w-12 h-6 rounded-full flex items-center px-1"
                       style={item.on ? { background: "rgba(255,215,0,0.2)", border: "1px solid rgba(255,215,0,0.3)" } : { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
                     >
-                      <div
-                        className={`w-4 h-4 rounded-full transition-all ${item.on ? "ml-auto" : ""}`}
-                        style={item.on ? { background: "#FFD700", boxShadow: "0 0 8px #FFD700" } : { background: "rgba(255,255,255,0.2)" }}
-                      />
+                      <div className={`w-4 h-4 rounded-full ${item.on ? "ml-auto" : ""}`} style={item.on ? { background: "#FFD700", boxShadow: "0 0 6px #FFD700" } : { background: "rgba(255,255,255,0.2)" }} />
                     </div>
                   </div>
-                  {item !== [{ label: "Звуки", desc: "Скоро", on: false }][0] && <div className="h-px bg-white/5 mt-4" />}
+                  {idx < arr.length - 1 && <div className="h-px bg-white/5 mt-4" />}
                 </div>
               ))}
             </div>
 
             <div className="glass-card rounded-2xl p-4 neon-border">
               <p className="font-rubik font-medium text-sm text-white mb-1">Сбросить прогресс</p>
-              <p className="text-white/40 text-xs mb-3">Удалить все звёзды и улучшения</p>
+              <p className="text-white/40 text-xs mb-3">Удалить все звёзды, уровень и улучшения</p>
               <button
                 onClick={() => {
                   if (confirm("Сбросить весь прогресс?")) {
-                    setStars(0);
-                    setTotalStars(0);
-                    setTotalClicks(0);
-                    setUpgrades(UPGRADES_INITIAL);
-                    setTasks(TASKS_INITIAL);
+                    localStorage.removeItem("star_clicker_save");
+                    setStars(0); setTotalStars(0); setTotalClicks(0);
+                    setUpgrades(UPGRADES_INITIAL); setTasks(TASKS_INITIAL);
+                    setLevel(1); setXp(0); setEnergy(MAX_ENERGY_BASE);
                   }
                 }}
                 className="w-full py-2 rounded-xl text-sm font-rubik font-medium text-red-400 border border-red-500/30 active:bg-red-500/10 transition-all"
@@ -556,7 +642,6 @@ export default function Index() {
                 Сбросить
               </button>
             </div>
-
             <div className="text-center py-2">
               <p className="text-white/20 text-xs font-rubik">Star Clicker v1.0</p>
               <p className="text-white/10 text-xs mt-0.5">Made with ⭐ in space</p>
@@ -568,22 +653,15 @@ export default function Index() {
       {/* BOTTOM NAV */}
       <div
         className="relative z-20 flex items-center justify-around px-2 py-2 shrink-0"
-        style={{
-          background: "rgba(7, 10, 20, 0.92)",
-          backdropFilter: "blur(20px)",
-          borderTop: "1px solid rgba(255,215,0,0.12)",
-          boxShadow: "0 -10px 40px rgba(0,0,0,0.4)",
-        }}
+        style={{ background: "rgba(7,10,20,0.92)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,215,0,0.12)", boxShadow: "0 -8px 30px rgba(0,0,0,0.4)" }}
       >
-        {(
-          [
-            { id: "home", icon: "Home", label: "Главная" },
-            { id: "tasks", icon: "CheckSquare", label: "Задания" },
-            { id: "shop", icon: "ShoppingBag", label: "Магазин" },
-            { id: "profile", icon: "User", label: "Профиль" },
-            { id: "settings", icon: "Settings", label: "Настройки" },
-          ] as { id: Tab; icon: string; label: string }[]
-        ).map((item) => {
+        {([
+          { id: "home", icon: "Home", label: "Главная" },
+          { id: "tasks", icon: "CheckSquare", label: "Задания" },
+          { id: "shop", icon: "ShoppingBag", label: "Магазин" },
+          { id: "profile", icon: "User", label: "Профиль" },
+          { id: "settings", icon: "Settings", label: "Настройки" },
+        ] as { id: Tab; icon: string; label: string }[]).map((item) => {
           const active = tab === item.id;
           return (
             <button
@@ -592,15 +670,8 @@ export default function Index() {
               className="flex flex-col items-center gap-1 px-2 py-1.5 rounded-xl transition-all"
               style={active ? { background: "rgba(255,215,0,0.1)" } : {}}
             >
-              <Icon
-                name={item.icon}
-                size={20}
-                className={active ? "nav-active" : "text-white/35"}
-              />
-              <span
-                className="text-[10px] font-rubik font-medium transition-all"
-                style={active ? { color: "#FFD700" } : { color: "rgba(255,255,255,0.35)" }}
-              >
+              <Icon name={item.icon} size={20} className={active ? "nav-active" : "text-white/35"} />
+              <span className="text-[10px] font-rubik font-medium" style={active ? { color: "#FFD700" } : { color: "rgba(255,255,255,0.35)" }}>
                 {item.label}
               </span>
             </button>
