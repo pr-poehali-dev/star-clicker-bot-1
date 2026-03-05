@@ -69,6 +69,7 @@ const TASKS_INITIAL: Task[] = [
   { id: "t3", title: "Магазин открыт", desc: "Купи первое улучшение", reward: 200, emoji: "🛒", done: false },
   { id: "t4", title: "Тысячник", desc: "Набери 1000 звёзд", reward: 500, emoji: "💫", done: false },
   { id: "t5", title: "Автопилот", desc: "Купи автокликер", reward: 300, emoji: "🤖", done: false },
+  { id: "t6", title: "Первый друг", desc: "Пригласи 1 друга по реферальной ссылке", reward: 1000, emoji: "👥", done: false },
 ];
 
 const XP_PER_LEVEL = 100;
@@ -290,7 +291,39 @@ export default function Index() {
     if (task.id === "t3") return upgrades.some((u) => u.level > 0);
     if (task.id === "t4") return totalStars >= 1000;
     if (task.id === "t5") return upgrades.some((u) => ["auto_clicker", "super_auto", "galaxy_core"].includes(u.id) && u.level > 0);
+    if (task.id === "t6") return referrals.length >= 1;
     return false;
+  };
+
+  const getRefLink = () => {
+    const tgId = getTgUserId();
+    const id = tgId || refId;
+    return `https://t.me/StarClickerBot?start=${id}`;
+  };
+
+  const handleShare = () => {
+    const link = getRefLink();
+    const text = `🌟 Играю в Star Clicker — кликай по звёздам и зарабатывай! Присоединяйся и получи +${REFERRAL_BONUS} ⭐ бонус!`;
+    const tg = (window as unknown as { Telegram?: { WebApp?: { openTelegramLink?: (url: string) => void } } }).Telegram;
+    if (tg?.WebApp?.openTelegramLink) {
+      tg.WebApp.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`);
+    } else {
+      window.open(`https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`, "_blank");
+    }
+  };
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(getRefLink()).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const addDemoReferral = () => {
+    const name = REF_NAMES[Math.floor(Math.random() * REF_NAMES.length)] + " #" + Math.floor(Math.random() * 999);
+    const newRef: Referral = { id: genRefId(), name, joinedAt: Date.now(), bonus: REFERRAL_BONUS };
+    setReferrals((r) => [...r, newRef]);
+    setStars((s) => s + REFERRAL_BONUS);
+    setTotalStars((t) => t + REFERRAL_BONUS);
   };
 
   const claimTask = (taskId: string) => {
@@ -635,6 +668,7 @@ export default function Index() {
                     setStars(0); setTotalStars(0); setTotalClicks(0);
                     setUpgrades(UPGRADES_INITIAL); setTasks(TASKS_INITIAL);
                     setLevel(1); setXp(0); setEnergy(MAX_ENERGY_BASE);
+                    setReferrals([]);
                   }
                 }}
                 className="w-full py-2 rounded-xl text-sm font-rubik font-medium text-red-400 border border-red-500/30 active:bg-red-500/10 transition-all"
@@ -648,19 +682,104 @@ export default function Index() {
             </div>
           </div>
         )}
+
+        {/* REFERRAL */}
+        {tab === "referral" && (
+          <div className="px-4 py-4 space-y-4">
+            <h2 className="font-orbitron font-bold text-lg glow-text-gold">Рефералы</h2>
+
+            {/* Banner */}
+            <div
+              className="rounded-2xl p-4 text-center space-y-1"
+              style={{ background: "linear-gradient(135deg, rgba(191,95,255,0.2), rgba(0,245,255,0.15))", border: "1px solid rgba(191,95,255,0.3)" }}
+            >
+              <p className="text-3xl">👥</p>
+              <p className="font-orbitron font-black text-lg" style={{ color: "#BF5FFF" }}>+{REFERRAL_BONUS} ⭐</p>
+              <p className="text-white/70 text-sm font-rubik">за каждого приглашённого друга</p>
+              <p className="text-white/40 text-xs">Друг тоже получает бонус при входе</p>
+            </div>
+
+            {/* Stats */}
+            <div className="flex gap-3">
+              <div className="flex-1 glass-card rounded-2xl p-3 text-center neon-border">
+                <p className="font-orbitron font-black text-2xl" style={{ color: "#BF5FFF" }}>{referrals.length}</p>
+                <p className="text-white/40 text-xs mt-1">Друзей</p>
+              </div>
+              <div className="flex-1 glass-card rounded-2xl p-3 text-center neon-border">
+                <p className="font-orbitron font-black text-2xl" style={{ color: "#FFD700" }}>{formatNum(referrals.length * REFERRAL_BONUS)}</p>
+                <p className="text-white/40 text-xs mt-1">Заработано ⭐</p>
+              </div>
+            </div>
+
+            {/* Ref link */}
+            <div className="glass-card rounded-2xl p-4 neon-border space-y-3">
+              <p className="font-rubik text-xs text-white/40 uppercase tracking-widest">Твоя реф-ссылка</p>
+              <div
+                className="rounded-xl px-3 py-2.5 flex items-center gap-2"
+                style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.07)" }}
+              >
+                <span className="text-xs font-orbitron flex-1 truncate" style={{ color: "#00F5FF" }}>{getRefLink()}</span>
+                <button
+                  onClick={handleCopyLink}
+                  className="shrink-0 text-xs font-rubik font-medium px-2 py-1 rounded-lg transition-all"
+                  style={{ background: copied ? "rgba(0,245,255,0.2)" : "rgba(255,255,255,0.08)", color: copied ? "#00F5FF" : "rgba(255,255,255,0.5)" }}
+                >
+                  {copied ? "✓" : "Копировать"}
+                </button>
+              </div>
+              <button
+                onClick={handleShare}
+                className="w-full py-3 rounded-xl font-orbitron font-bold text-sm text-black transition-transform active:scale-95"
+                style={{ background: "linear-gradient(135deg, #BF5FFF, #00F5FF)" }}
+              >
+                Поделиться в Telegram
+              </button>
+            </div>
+
+            {/* Friends list */}
+            {referrals.length > 0 ? (
+              <div className="space-y-2">
+                <p className="font-rubik text-xs text-white/40 uppercase tracking-widest px-1">Приглашённые</p>
+                {referrals.map((r) => (
+                  <div key={r.id} className="glass-card rounded-2xl px-4 py-3 flex items-center gap-3 neon-border">
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-lg shrink-0" style={{ background: "rgba(191,95,255,0.2)" }}>👤</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-rubik font-medium text-sm text-white truncate">{r.name}</p>
+                      <p className="text-white/30 text-xs">{new Date(r.joinedAt).toLocaleDateString("ru-RU")}</p>
+                    </div>
+                    <span className="font-orbitron text-xs font-bold shrink-0" style={{ color: "#FFD700" }}>+{r.bonus} ⭐</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-6 space-y-2">
+                <p className="text-4xl">🌌</p>
+                <p className="text-white/40 text-sm font-rubik">Пока никого нет.<br/>Поделись ссылкой и зови друзей!</p>
+              </div>
+            )}
+
+            {/* Demo button — for testing */}
+            <button
+              onClick={addDemoReferral}
+              className="w-full py-2 rounded-xl text-xs font-rubik text-white/20 border border-white/5 active:bg-white/5 transition-all"
+            >
+              + Тест: симулировать приглашение
+            </button>
+          </div>
+        )}
       </div>
 
       {/* BOTTOM NAV */}
       <div
-        className="relative z-20 flex items-center justify-around px-2 py-2 shrink-0"
+        className="relative z-20 flex items-center justify-around px-1 py-2 shrink-0"
         style={{ background: "rgba(7,10,20,0.92)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,215,0,0.12)", boxShadow: "0 -8px 30px rgba(0,0,0,0.4)" }}
       >
         {([
           { id: "home", icon: "Home", label: "Главная" },
           { id: "tasks", icon: "CheckSquare", label: "Задания" },
           { id: "shop", icon: "ShoppingBag", label: "Магазин" },
+          { id: "referral", icon: "Users", label: "Рефералы" },
           { id: "profile", icon: "User", label: "Профиль" },
-          { id: "settings", icon: "Settings", label: "Настройки" },
         ] as { id: Tab; icon: string; label: string }[]).map((item) => {
           const active = tab === item.id;
           return (
